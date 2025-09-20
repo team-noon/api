@@ -1,6 +1,10 @@
 #pragma once
 
-#include <lua/lua.h>
+#ifdef __APPLE__
+    #include <lua/lua.h>
+#else
+    #include <lua.h>
+#endif
 
 typedef struct Vec2 {
     float x, y;
