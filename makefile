@@ -13,7 +13,7 @@ else
     $(error Unsupported OS)
 endif
 
-SOURCES=main.c src/render.c
+SOURCES=main.c src/*
 
 build/sim: $(SOURCES) include/*
 	mkdir -p build

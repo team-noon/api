@@ -1,4 +1,3 @@
-#include "types.h"
 #define GL_SILENCE_DEPRECATION
 
 #include <GLFW/glfw3.h>
@@ -8,10 +7,36 @@
     #include <GL/gl.h>
 #endif
 
+#include <types.h>
 #include <render.h>
-
+#include <field.h>
 #include <stdio.h>
 #include <stdarg.h>
+
+const struct {
+    struct {
+        vec2_t corner, size;
+    } outline;
+
+    struct {
+        vec2_t l, r;
+        vec2_t size;
+    } goal;
+
+    struct {
+        vec2_t l, r;
+        vec2_t size;
+    } goal_area;
+
+    struct {
+        vec2_t l, r;
+        vec2_t size;
+    } penalty_area;
+} field = {
+    {{BORDER_STRIP_WIDTH, BORDER_STRIP_WIDTH}, {FIELD_LENGTH, FIELD_WIDTH}},
+    {{BORDER_STRIP_WIDTH - GOAL_DEPTH, CENTER_Y - GOAL_WIDTH / 2.0f}, {BORDER_STRIP_WIDTH + FIELD_LENGTH, CENTER_Y - GOAL_WIDTH / 2.0f}, {GOAL_DEPTH, GOAL_WIDTH}},
+    {{BORDER_STRIP_WIDTH, CENTER_Y - GOAL_AREA_WIDTH / 2.0f}, {BORDER_STRIP_WIDTH + FIELD_LENGTH - GOAL_AREA_LENGTH, CENTER_Y - GOAL_AREA_WIDTH / 2.0f}, {GOAL_AREA_LENGTH, GOAL_AREA_WIDTH}},
+    {{BORDER_STRIP_WIDTH, CENTER_Y - PENALTY_AREA_WIDTH / 2.0f}, {BORDER_STRIP_WIDTH + FIELD_LENGTH - PENALTY_AREA_LENGTH, CENTER_Y - PENALTY_AREA_WIDTH / 2.0f}, {PENALTY_AREA_LENGTH, PENALTY_AREA_WIDTH}}};
 
 int Render_Create(struct Render *render, unsigned int width, unsigned int height, float scale) {
     if (!render) return 1;
@@ -119,4 +144,38 @@ void Render_Circle(struct Render render, vec2_t center, float radius) {
 
 void Render_FilledCircle(struct Render render, vec2_t center, float radius) {
 
+}
+
+void drawField(struct Render render) {
+    Render_Color(render, 1, 1, 1);
+
+    // Center Line
+    Render_Line(render, (vec2_t){CENTER_X, BORDER_STRIP_WIDTH}, (vec2_t){BORDER_STRIP_WIDTH + FIELD_LENGTH / 2.0f, BORDER_STRIP_WIDTH + FIELD_WIDTH});
+
+    // Center Circle
+    Render_PolyLine(render, 8, (vec2_t){CENTER_X, CENTER_Y - CENTER_CIRCLE_DMTR / 2.0f}, (vec2_t){CENTER_X + CENTER_CIRCLE_DMTR / 2.0f, CENTER_Y}, (vec2_t){CENTER_X + CENTER_CIRCLE_DMTR / 2.0f, CENTER_Y}, (vec2_t){CENTER_X, CENTER_Y + CENTER_CIRCLE_DMTR / 2.0f}, (vec2_t){CENTER_X, CENTER_Y + CENTER_CIRCLE_DMTR / 2.0f}, (vec2_t){CENTER_X - CENTER_CIRCLE_DMTR / 2.0f, CENTER_Y}, (vec2_t){CENTER_X - CENTER_CIRCLE_DMTR / 2.0f, CENTER_Y}, (vec2_t){CENTER_X, CENTER_Y - CENTER_CIRCLE_DMTR / 2.0f});
+    
+    // center cross
+    Render_Line(render, (vec2_t){CENTER_X - 10, CENTER_Y}, (vec2_t){CENTER_X + 10, CENTER_Y});
+
+    // crosses
+    Render_Line(render, (vec2_t){BORDER_STRIP_WIDTH + PENALTY_MARK_DIST - CROSS_SIZE / 2.0f, CENTER_Y}, (vec2_t){BORDER_STRIP_WIDTH + PENALTY_MARK_DIST + CROSS_SIZE / 2.0f, CENTER_Y});
+    Render_Line(render, (vec2_t){BORDER_STRIP_WIDTH + PENALTY_MARK_DIST, CENTER_Y - CROSS_SIZE / 2.0f}, (vec2_t){BORDER_STRIP_WIDTH + PENALTY_MARK_DIST, CENTER_Y + CROSS_SIZE / 2.0f});
+    Render_Line(render, (vec2_t){BORDER_STRIP_WIDTH + FIELD_LENGTH - PENALTY_MARK_DIST - CROSS_SIZE / 2.0f, CENTER_Y}, (vec2_t){BORDER_STRIP_WIDTH + FIELD_LENGTH - PENALTY_MARK_DIST + CROSS_SIZE / 2.0f, CENTER_Y});
+    Render_Line(render, (vec2_t){BORDER_STRIP_WIDTH + FIELD_LENGTH - PENALTY_MARK_DIST, CENTER_Y - CROSS_SIZE / 2.0f}, (vec2_t){BORDER_STRIP_WIDTH + FIELD_LENGTH - PENALTY_MARK_DIST, CENTER_Y + CROSS_SIZE / 2.0f});
+
+    Render_Rect(render, field.outline.corner, field.outline.size);      // outline
+    Render_Rect(render, field.goal.l, field.goal.size);                 // goals
+    Render_Rect(render, field.goal.r, field.goal.size);
+    Render_Rect(render, field.goal_area.l, field.goal_area.size);       // goal areas
+    Render_Rect(render, field.goal_area.r, field.goal_area.size);
+    Render_Rect(render, field.penalty_area.l, field.penalty_area.size); // penalty areas
+    Render_Rect(render, field.penalty_area.r, field.penalty_area.size);
+}
+
+void drawMarker(struct Render render, body_t body, float r, float g, float b) {
+    Render_Color(render, r, g, b);
+    Render_Polygon(render, 4, (vec2_t){body.center.x, body.center.y + MARKER_RADIUS}, (vec2_t){body.center.x + MARKER_RADIUS, body.center.y}, (vec2_t){body.center.x, body.center.y - MARKER_RADIUS}, (vec2_t){body.center.x - MARKER_RADIUS, body.center.y});
+    Render_Color(render, 1, 0, 1);
+    Render_Line(render, body.center,  (vec2_t){body.center.x + body.speed.x, body.center.y + body.speed.y});
 }

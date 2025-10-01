@@ -2,12 +2,11 @@
 
 #include <types.h>
 
-struct Render {
+typedef struct Render {
     struct GLFWwindow *window;
-
     int width, height;
     float pcmx, pcmy;
-};
+} render_t;
 
 /// Create Window & Renderer
 /// @param render renderer struct
@@ -38,3 +37,6 @@ void Render_PolyLine(struct Render render, unsigned int indices, vec2_t first, .
 
 void Render_Circle(struct Render render, vec2_t center, float radius);
 void Render_FilledCircle(struct Render render, vec2_t center, float radius);
+
+void drawField(struct Render render);
+void drawMarker(struct Render render, body_t body, float r, float g, float b);
