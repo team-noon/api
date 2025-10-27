@@ -4,7 +4,6 @@ ifeq ($(OS), Linux)
     CC=gcc
     LIBS=-lm -ldl -lGL -lglfw -llua
     FLAGS=-L/usr/lib -I/usr/include -Iinclude
-    $(warning Untested OS)
 else ifeq ($(OS), Darwin)
     CC=clang
     LIBS=-framework OpenGL -lglfw -llua
@@ -15,7 +14,7 @@ endif
 
 SOURCES=main.c src/*
 
-build/sim: $(SOURCES) include/*
+build: $(SOURCES) include/*
 	mkdir -p build
 	$(CC) $(SOURCES) $(FLAGS) $(LIBS) -o build/sim
 	cp ./lua/* ./build

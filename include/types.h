@@ -30,6 +30,7 @@ typedef struct TeamData {
 typedef struct MatchData {
     teamdata_t team[TEAMS];
     body_t ball;
+    robotdata_t* lastTouchedBall;
 } matchdata_t;
 
 typedef struct Collider {

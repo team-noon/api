@@ -28,15 +28,16 @@ float getTime() {
 int lua_api(lua_State* L) {
     // find calling robot
     // (in case coroutines are used; could be a context switch otherwise)
+    
     int args = lua_gettop(L);
-    lua_getglobal(L, "team");
-    lua_getglobal(L, "player");
-    int t = lua_tointeger(L, args+1), r = lua_tointeger(L, args+2);
-    for (int i = 0; i < 2; ++i) {
-        lua_pop(L, args+1);
-    }
     if (!args) return 0; // invalid call
-
+    lua_getglobal(L, "team");
+    int t = lua_tointeger(L, args+1);
+    lua_getglobal(L, "player");
+    int r = lua_tointeger(L, args+2);
+    lua_getglobal(L, "match");
+    matchdata_t* match = lua_touserdata(L, args+3);
+    lua_settop(L, 1);
     switch(lua_tointeger(L, 1)) {
         case 00: { // game/state
             lua_pop(L, args);
@@ -46,40 +47,40 @@ int lua_api(lua_State* L) {
             return 1;
         } break;
 
-        // case 10: { // locate/teammate
-        //     if (args < 2) return 0;
+        case 10: { // locate/teammate
+            if (args < 2) return 0;
 
-        //     int id = lua_tointeger(L, 2);
+            int id = lua_tointeger(L, 2);
 
-        //     lua_pop(L, args);
+            lua_pop(L, args);
 
-        //     lua_pushnumber(L, match.team[t].robot[id].cs.center.x);
-        //     lua_pushnumber(L, match.team[t].robot[id].cs.center.y);
+            lua_pushnumber(L, match->team[t].robot[id].cs.center.x);
+            lua_pushnumber(L, match->team[t].robot[id].cs.center.y);
 
-        //     return 2;
-        // } break;
+            return 2;
+        } break;
 
-        // case 11: { // locate/opponent
-        //     if (args < 2) return 0;
+        case 11: { // locate/opponent
+            if (args < 2) return 0;
 
-        //     int id = lua_tointeger(L, 2);
+            int id = lua_tointeger(L, 2);
 
-        //     lua_pop(L, args);
+            lua_pop(L, args);
 
-        //     lua_pushnumber(L, match.team[t ^ 1].robot[id].cs.center.x);
-        //     lua_pushnumber(L, match.team[t ^ 1].robot[id].cs.center.y);
+            lua_pushnumber(L, match->team[t ^ 1].robot[id].cs.center.x);
+            lua_pushnumber(L, match->team[t ^ 1].robot[id].cs.center.y);
 
-        //     return 2;
-        // } break;
+            return 2;
+        } break;
 
-        // case 12: { // locate/ball
-        //     lua_pop(L, args);
+        case 12: { // locate/ball
+            lua_pop(L, args);
 
-        //     lua_pushnumber(L, match.ball.center.x);
-        //     lua_pushnumber(L, match.ball.center.y);
+            lua_pushnumber(L, match->ball.center.x);
+            lua_pushnumber(L, match->ball.center.y);
 
-        //     return 2;
-        // } break;
+            return 2;
+        } break;
 
         case 20: { // robot/move
             if (args < 3) return 0;
@@ -123,9 +124,38 @@ int lua_api(lua_State* L) {
     }
 }
 
+int game_isBallInPlay(matchdata_t* match) {
+    // check if its in the goal area of either team
+    if (
+        BORDER_STRIP_WIDTH - GOAL_DEPTH < match->ball.center.x &&
+        BORDER_STRIP_WIDTH > match->ball.center.x &&
+        CENTER_Y - GOAL_WIDTH / 2.0f < match->ball.center.y &&
+        CENTER_Y + GOAL_WIDTH / 2.0f > match->ball.center.y 
+        ||
+        BORDER_STRIP_WIDTH + FIELD_LENGTH < match->ball.center.x &&
+        BORDER_STRIP_WIDTH + FIELD_LENGTH + GOAL_DEPTH > match->ball.center.x &&
+        CENTER_Y - GOAL_WIDTH / 2.0f < match->ball.center.y &&
+        CENTER_Y + GOAL_WIDTH / 2.0f > match->ball.center.y
+    ) {
+        return 2;
+    }
+    // check if its out
+    if (
+        match->ball.center.x < BORDER_STRIP_WIDTH ||
+        match->ball.center.x > BORDER_STRIP_WIDTH + FIELD_LENGTH ||
+        match->ball.center.y < BORDER_STRIP_WIDTH ||
+        match->ball.center.y > BORDER_STRIP_WIDTH + FIELD_WIDTH
+    ) {
+        return 0;
+    }
+    // all is in order
+    return 1;
+}
+
 int game_init(matchdata_t* match) {
     match->ball.center.x = CENTER_X;
     match->ball.center.y = CENTER_Y;
+    match->lastTouchedBall = NULL;
 
     // Boot up robots
     for (int t = 0; t < TEAMS; t++) {
@@ -133,7 +163,7 @@ int game_init(matchdata_t* match) {
             robotdata_t* rd = &match->team[t].robot[r];
             rd->cs.center.x = t == 0 ? BORDER_STRIP_WIDTH + (r + 1) * 2 * 2 * MARKER_RADIUS : FIELD_LENGTH + BORDER_STRIP_WIDTH - (r + 1) * 2 * 2 * MARKER_RADIUS;
             rd->cs.center.y = BORDER_STRIP_WIDTH / 2.0f;
-            rd->orientation = 0; // TODO
+            rd->orientation = t ? 0.5 : 0;
 
             rd->L = luaL_newstate();
             luaL_openlibs(rd->L);
@@ -141,6 +171,8 @@ int game_init(matchdata_t* match) {
             lua_setglobal(rd->L, "team");
             lua_pushinteger(rd->L, r);
             lua_setglobal(rd->L, "player");
+            lua_pushlightuserdata(rd->L, match);
+            lua_setglobal(rd->L, "match");
             luaL_dofile(rd->L, "tacapi.lua");
             lua_register(rd->L, "c_api", lua_api);
             if (luaL_dofile(rd->L, "tactics.lua") != LUA_OK) {  // Run the Lua file
@@ -191,6 +223,7 @@ int game_update(matchdata_t* match, float* time) {
         // apply speed
         ba->center.x += maxStep.x, ba->center.y += maxStep.y;
     }
+    printf("Is ball in play?\t%d\n", game_isBallInPlay(match));
 }
 
 int game_destroy(matchdata_t* match) {

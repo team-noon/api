@@ -10,6 +10,10 @@
 
 float getTime();
 
+int lua_api(lua_State* L);
+
+int game_isBallInPlay(matchdata_t* match);
+
 int game_init(matchdata_t* match);
 
 int game_update(matchdata_t* match, float* time);

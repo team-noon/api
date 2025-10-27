@@ -1,7 +1,5 @@
 #pragma once
 
-#include <types.h>
-
 #define PCM 1 // PCM
 #define FIELD_LENGTH 900 // A
 #define FIELD_WIDTH 600 // B
