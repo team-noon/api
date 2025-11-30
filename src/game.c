@@ -16,13 +16,16 @@
 #include <time.h>
 #include <field.h>
 #include <types.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 
 #include <math.h>
 
 float getTime() {
     struct timespec res = {};
     clock_gettime(CLOCK_MONOTONIC, &res);
-    return (float)(1000.0f * (float)res.tv_sec + (float)res.tv_nsec / 1e6) / 1000.0f;
+    return (float)res.tv_sec + (float)res.tv_nsec / 1e9;
 }
 
 int lua_api(lua_State* L) {
@@ -37,7 +40,7 @@ int lua_api(lua_State* L) {
     int r = lua_tointeger(L, args+2);
     lua_getglobal(L, "match");
     matchdata_t* match = lua_touserdata(L, args+3);
-    lua_settop(L, 1);
+    lua_settop(L, args);
     switch(lua_tointeger(L, 1)) {
         case 00: { // game/state
             lua_pop(L, args);
@@ -82,17 +85,38 @@ int lua_api(lua_State* L) {
             return 2;
         } break;
 
+        case 13: { // locate/opponent-goal
+            lua_pop(L, args);
+
+            int x = match->team[t ^ 1].goal ? BORDER_STRIP_WIDTH - (GOAL_DEPTH / 2) : BORDER_STRIP_WIDTH + FIELD_LENGTH + (GOAL_DEPTH / 2);
+            int y = BORDER_STRIP_WIDTH + (FIELD_WIDTH / 2);
+
+            lua_pushnumber(L, x);
+            lua_pushnumber(L, y);
+
+            return 2;
+        } break;
+
         case 20: { // robot/move
             if (args < 3) return 0;
 
-            // float dir = lua_tonumber(L, )
+            float dir = lua_tonumber(L, 2);
+            int speed = lua_tointeger(L, 3);
 
+            match->team[t].robot[r].cs.speed.x = cos(dir)*speed;
+            match->team[t].robot[r].cs.speed.y = sin(dir)*speed;
             lua_pop(L, args);
             return 0;
         } break;
 
         case 21: { // robot/kick
             if (args < 3) return 0;
+
+            float dir = lua_tonumber(L, 2);
+            int force = lua_tointeger(L, 3);
+
+            match->ball.speed.x = cos(dir)*force;
+            match->ball.speed.y = sin(dir)*force;
 
             lua_pop(L, args);
             return 0;
@@ -152,19 +176,49 @@ int game_isBallInPlay(matchdata_t* match) {
     return 1;
 }
 
+int game_setpos(matchdata_t* match) {
+    switch (match->state) {
+        case SET:
+            match->team[match->kickoff].robot[0].cs.center.x = BORDER_STRIP_WIDTH + (match->team[match->kickoff].goal ? (FIELD_LENGTH - GOAL_AREA_LENGTH / 2) : GOAL_AREA_LENGTH / 2);
+            match->team[!match->kickoff].robot[0].cs.center.x = BORDER_STRIP_WIDTH + (match->team[!match->kickoff].goal ? (FIELD_LENGTH - GOAL_AREA_LENGTH / 2) : GOAL_AREA_LENGTH / 2);
+            match->team[match->kickoff].robot[0].cs.center.y = match->team[!match->kickoff].robot[0].cs.center.y = CENTER_Y;
+            for (int r = 1; r < PLAYERS - 1; ++r) {
+                match->team[match->kickoff].robot[r].cs.center.x = BORDER_STRIP_WIDTH + (match->team[match->kickoff].goal ? + FIELD_LENGTH * 12/18 : FIELD_LENGTH * 6/18);
+                match->team[!match->kickoff].robot[r].cs.center.x = BORDER_STRIP_WIDTH + (match->team[!match->kickoff].goal ? + FIELD_LENGTH * 12/18 : FIELD_LENGTH * 6/18);
+                match->team[match->kickoff].robot[r].cs.center.y = BORDER_STRIP_WIDTH + r * (FIELD_WIDTH / (PLAYERS-1));
+                match->team[!match->kickoff].robot[r].cs.center.y = BORDER_STRIP_WIDTH + r * (FIELD_WIDTH / (PLAYERS));
+            }
+            match->team[match->kickoff].robot[PLAYERS - 1].cs.center.x = BORDER_STRIP_WIDTH + (FIELD_LENGTH / 2) + (match->team[match->kickoff].goal ? 30 : -30);
+            match->team[match->kickoff].robot[PLAYERS - 1].cs.center.y = CENTER_Y;
+            match->team[!match->kickoff].robot[PLAYERS - 1].cs.center.x = BORDER_STRIP_WIDTH + (match->team[!match->kickoff].goal ? + FIELD_LENGTH * 12/18 : FIELD_LENGTH * 6/18);
+            match->team[!match->kickoff].robot[PLAYERS - 1].cs.center.y = BORDER_STRIP_WIDTH + (PLAYERS - 1) * (FIELD_WIDTH / (PLAYERS));
+            for (int t = 0; t < TEAMS; ++t) {
+                for (int r = 0; r < PLAYERS; ++r) {
+                    match->team[t].robot[r].orientation = match->team[t].goal ? 0.5 : 0;
+                }
+            }
+            break;
+    }
+}
+
 int game_init(matchdata_t* match) {
     match->ball.center.x = CENTER_X;
     match->ball.center.y = CENTER_Y;
     match->lastTouchedBall = NULL;
+    match->whichHalf = 0;
+    match->kickoff = rand() % 2;
+    match->startofHalf = getTime();
+    match->team[!match->kickoff].goal = rand() % 2;
+    match->team[match->kickoff].goal = !match->team[!match->kickoff].goal;
+    match->state = SET;
+    game_setpos(match);
 
     // Boot up robots
     for (int t = 0; t < TEAMS; t++) {
         for (int r = 0; r < PLAYERS; r++) {
             robotdata_t* rd = &match->team[t].robot[r];
-            rd->cs.center.x = t == 0 ? BORDER_STRIP_WIDTH + (r + 1) * 2 * 2 * MARKER_RADIUS : FIELD_LENGTH + BORDER_STRIP_WIDTH - (r + 1) * 2 * 2 * MARKER_RADIUS;
-            rd->cs.center.y = BORDER_STRIP_WIDTH / 2.0f;
-            rd->orientation = t ? 0.5 : 0;
-
+            rd->team = t;
+            rd->id = t*PLAYERS + r;
             rd->L = luaL_newstate();
             luaL_openlibs(rd->L);
             lua_pushinteger(rd->L, t);
@@ -189,9 +243,18 @@ int game_init(matchdata_t* match) {
 
 int game_update(matchdata_t* match, float* time) {
     // Deltatime
-    float current = getTime(); 
+    float current = getTime();
     float deltaTime = current - *time;
     *time = current;
+    if (current - match->startofHalf > 600) {
+        match->team[match->kickoff].goal = !match->team[match->kickoff].goal;
+        match->team[!match->kickoff].goal = !match->team[!match->kickoff].goal;
+        match->kickoff = !match->kickoff;
+        match->whichHalf++;
+        match->startofHalf = current;
+        match->state = SET;
+        game_setpos(match);
+    }
     // Update Robot Scripts
     for (int t = 0; t < TEAMS; t++) {
         for (int r = 0; r < PLAYERS; r++) {
@@ -217,13 +280,16 @@ int game_update(matchdata_t* match, float* time) {
             float dist = sqrt(pow(apos.x - bpos.x, 2) + pow(apos.y - bpos.y, 2));
             vec2_t maxnorm = vec_norm(maxStep);
             if (dist <= MARKER_RADIUS * 2 + 0.01) {
-               maxStep = (vec2_t){maxnorm.x * (dist - 2 * MARKER_RADIUS), maxnorm.y * (dist - 2 * MARKER_RADIUS)};
+                if (a == TEAMS*PLAYERS) {
+                    match->lastTouchedBall = &match->team[b < 4].robot[b % 4];
+                }
+                maxStep = (vec2_t){maxnorm.x * (dist - 2 * MARKER_RADIUS), maxnorm.y * (dist - 2 * MARKER_RADIUS)};
             }
         }
         // apply speed
         ba->center.x += maxStep.x, ba->center.y += maxStep.y;
     }
-    printf("Is ball in play?\t%d\n", game_isBallInPlay(match));
+    fflush(stdout);
 }
 
 int game_destroy(matchdata_t* match) {

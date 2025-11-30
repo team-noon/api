@@ -40,14 +40,15 @@ function API.Locate.Ball() -- Get Ball Position
     return Vec2:New(c_api(12))
 end
 
+function API.Locate.OppGoal() -- Get Ball Position
+    return Vec2:New(c_api(13))
+end
+
 -- Robot Control (2x)
 API.Robot = {}
 
 function API.Robot.Move(direction, speed)
     c_api(20, direction, speed)
-end
-
-function API.Robot.Turn(direction)
 end
 
 function API.Robot.Kick(angle, force)
