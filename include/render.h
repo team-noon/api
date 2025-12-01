@@ -3,9 +3,9 @@
 #include <types.h>
 
 typedef struct Render {
-    struct GLFWwindow *window;
-    int width, height;
-    float pcmx, pcmy;
+  struct GLFWwindow *window;
+  int width, height;
+  float pcmx, pcmy;
 } render_t;
 
 /// Create Window & Renderer
@@ -14,7 +14,8 @@ typedef struct Render {
 /// @param width height (in centimeters)
 /// @param pcm pixel - centimeter conversion
 /// @return 0: success, else: fail
-int Render_Create(struct Render *render, unsigned int width, unsigned int height, float scale);
+int Render_Create(struct Render *render, unsigned int width,
+                  unsigned int height, float scale);
 
 /// Destroy Window & Renderer
 /// @param render renderer struct
@@ -32,11 +33,14 @@ void Render_Line(struct Render render, vec2_t a, vec2_t b);
 void Render_Rect(struct Render render, vec2_t corner, vec2_t size);
 void Render_FilledRect(struct Render render, vec2_t corner, vec2_t size);
 
-void Render_Polygon(struct Render render, unsigned int indices, vec2_t first, ...);
-void Render_PolyLine(struct Render render, unsigned int indices, vec2_t first, ...);
+void Render_Polygon(struct Render render, unsigned int indices, vec2_t first,
+                    ...);
+void Render_PolyLine(struct Render render, unsigned int indices, vec2_t first,
+                     ...);
 
 void Render_Circle(struct Render render, vec2_t center, float radius);
 void Render_FilledCircle(struct Render render, vec2_t center, float radius);
 
 void drawField(struct Render render);
-void drawMarker(struct Render render, body_t body, float r, float g, float b);
+void drawMarker(struct Render render, body_t body, int fallen, float r, float g,
+                float b);
