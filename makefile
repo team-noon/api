@@ -1,5 +1,11 @@
-OS := $(shell uname -s)
+# config
+SOURCES := main.c src/*
 
+# auto
+OS := $(shell uname -s)
+LUA_DEP := $(patsubst lua/%.lua,build/%.lua,$(wildcard lua/*.lua))
+
+# detect os
 ifeq ($(OS), Linux)
     CC=gcc
     LIBS=-lm -ldl -lGL -lglfw -llua
@@ -12,16 +18,25 @@ else
     $(error Unsupported OS)
 endif
 
-SOURCES=main.c src/*
-
-build: $(SOURCES) include/*
-	mkdir -p build
+# main
+build/sim: $(SOURCES) include/* $(LUA_DEP)
+	@mkdir -p $(dir $@)
 	$(CC) $(SOURCES) $(FLAGS) $(LIBS) -o build/sim
 	cp ./lua/* ./build
-	echo "Built Simulator"
+	@echo "Built Simulator"
 
+# copy lua files
+build/%.lua: lua/%.lua
+	@mkdir -p $(dir $@)
+	cp $< $@
+
+# run target
+run: build/sim
+	cd build && ./sim
+
+# misc
 clean:
 	rm -r build
-	echo "Clean Finished"
+	@echo "Clean Finished"
 	
 .PHONY: clean
