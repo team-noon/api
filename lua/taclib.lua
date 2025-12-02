@@ -1,5 +1,0 @@
-require "tacapi"
-
-Tactics = {}
-
--- TODO
