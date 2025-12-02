@@ -1,21 +1,28 @@
 --- 2D Vector
-Vec2 = {
-    x = 0,
-    y = 0
-}
+Vec2 = { x = 0, y = 0}
 
--- TODO better constructor
+function Vec2:New(a, b)
+    if (type(self) ~= "table") then
+        return Vec2:New(a, b)
+    end
 
-function Vec2:New(args)
     local o = {x = 0, y = 0}
 
-    if (args ~= nil) then
-        if #args > 0 then
-            o.x = args[1]
-        end
+    if (type(a) == "number" and type(b) == "nil") then
+        o.x = a
+        o.y = a
+    elseif (type(a) == "number" and type(b) == "number") then
+        o.x = a
+        o.y = b
+    elseif (type(a) == "table") then
+        if (a ~= nil) then
+            if #a > 0 then
+                o.x = a[1]
+            end
 
-        if #args > 1 then
-            o.y = args[2]
+            if #a > 1 then
+                o.y = a[2]
+            end
         end
     end
 
@@ -26,70 +33,52 @@ end
 
 function Vec2.__add(a, b)
     if (type(b) == "number") then
-        return {x = a.x + b, y = a.y + b}
+        return Vec2:New(a.x + b, a.y + b)
     end
 
-    return {
-        x = a.x + b.x,
-        y = a.y + b.y
-    }
+    return Vec2:New(a.x + b.x, a.y + b.y)
 end
 
 function Vec2.__sub(a, b)
     if (type(b) == "number") then
-        return {x = a.x - b, y = a.y - b}
+        return Vec2:New(a.x - b, a.y - b)
     end
 
-    return {
-        x = a.x - b.x,
-        y = a.y - b.y
-    }
+    return Vec2:New(a.x - b.x, a.y - b.y)
 end
 
 -- Arithmetic
 
 function Vec2.__mul(a, b)
     if (type(b) == "number") then
-        return {x = a.x * b, y = a.y * b}
+        return Vec2:New(a.x * b, a.y * b)
     end
 
-    return {
-        x = a.x * b.x,
-        y = a.y * b.y
-    }
+    return Vec2:New(a.x * b.x, a.y * b.y)
 end
 
 function Vec2.__div(a, b)
     if (type(b) == "number") then
-        return {x = a.x / b, y = a.y / b}
+        return Vec2:New(a.x / b, a.y / b)
     end
 
-    return {
-        x = a.x / b.x,
-        y = a.y / b.y
-    }
+    return Vec2:New(a.x / b.x, a.y / b.y)
 end
 
 function Vec2.__mod(a, b)
     if (type(b) == "number") then
-        return {x = a.x % b, y = a.y % b}
+        return Vec2:New(a.x % b, a.y % b)
     end
 
-    return {
-        x = a.x % b.x,
-        y = a.y % b.y
-    }
+    return Vec2:New(a.x % b.x, a.y % b.y)
 end
 
 function Vec2.__pow(a, b)
     if (type(b) == "number") then
-        return {x = a.x ^ b, y = a.y ^ b}
+        return Vec2:New(a.x ^ b, a.y ^ b)
     end
 
-    return {
-        x = a.x ^ b.x,
-        y = a.y ^ b.y
-    }
+    return Vec2:New(a.x ^ b.x, a.y ^ b.y)
 end
 
 -- Comparison
@@ -182,10 +171,7 @@ function Vec2.dot(a, b)
 end
 
 function Vec2.lerp(a, b, blend)
-    return {
-        x = a.x + (b.x - a.x) * blend,
-        y = a.y + (b.y - a.y) * blend
-    }
+    return Vec2:New(a.x + (b.x - a.x) * blend, a.y + (b.y - a.y) * blend)
 end
 
 -- TODO (The Laundry)

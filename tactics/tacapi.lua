@@ -29,15 +29,19 @@ end
 API.Locate = {}
 
 function API.Locate.Teammate(id) -- Get Teammate Position
-    return Vec2(c_api(10, id))
+    return Vec2:New(c_api(10, id))
 end
 
 function API.Locate.Opp(id) -- Get Opponent Position
-    return Vec2(c_api(11, id))
+    return Vec2:New(c_api(11, id))
 end
 
 function API.Locate.Ball() -- Get Ball Position
-    return Vec2(c_api(12))
+    return Vec2:New(c_api(12))
+end
+
+function API.Locate.OppGoal() -- Get Ball Position
+    return Vec2:New(c_api(13))
 end
 
 -- Robot Control (2x)
@@ -45,9 +49,6 @@ API.Robot = {}
 
 function API.Robot.Move(direction, speed)
     c_api(20, direction, speed)
-end
-
-function API.Robot.Turn(direction)
 end
 
 function API.Robot.Kick(angle, force)
