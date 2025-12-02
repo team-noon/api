@@ -6,11 +6,11 @@ require "tacapi"
 
 Tacs = {}       -- Tacs Library
 
-Tacs.Ball = {}      -- Ball Preferences
+Tacs.Ball = {}      -- Ball Properties
 
-Tacs.Teammate = {}      -- Teammate Preferences
+Tacs.Teammate = {}      -- Teammate Properties
 
-Tacs.Opponent = {}      -- Opponent Preferences
+Tacs.Opponent = {}      -- Opponent Properties
 
 Tacs.GameState = {}     -- Store Game State
 
