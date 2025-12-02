@@ -1,0 +1,3 @@
+[submodule "api_repo"]
+	path = api_repo
+	url = https://github.com/team-noon/api
