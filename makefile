@@ -3,7 +3,7 @@ SOURCES := main.c src/*
 
 # auto
 OS := $(shell uname -s)
-LUA_DEP := $(patsubst lua/%.lua,build/%.lua,$(wildcard lua/*.lua))
+LUA_DEP := $(patsubst api_repo/tactics/%.lua,build/%.lua,$(wildcard api_repo/tactics/*.lua))
 
 # detect os
 ifeq ($(OS), Linux)
@@ -22,11 +22,11 @@ endif
 build/sim: $(SOURCES) include/* $(LUA_DEP)
 	@mkdir -p $(dir $@)
 	$(CC) $(SOURCES) $(FLAGS) $(LIBS) -o build/sim
-	cp ./lua/* ./build
+	cp ./api_repo/tactics/* ./build
 	@echo "Built Simulator"
 
 # copy lua files
-build/%.lua: lua/%.lua
+build/%.lua: api_repo/tactics/%.lua
 	@mkdir -p $(dir $@)
 	cp $< $@
 
