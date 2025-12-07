@@ -1,3 +1,5 @@
+role = ""
+
 function GetDistanceAndAngle(first, second)
 	local heightdiff = math.abs(first.y-second.y)
 	local widthdiff = math.abs(first.x-second.x)
@@ -12,15 +14,52 @@ function GetDistanceAndAngle(first, second)
 	return hypotenuse, direction
 end
 
+function OnInit()
+	if player == 0 then
+		role = "keeper"
+	else
+		role = "striker"
+	end
+	print(role)
+end
+
 function OnUpdate(dt)
 	ball = API.Locate.Ball()
 	myself = API.Locate.Teammate(player)
-	goal = API.Locate.OppGoal()
 	distance, direction = GetDistanceAndAngle(ball, myself)
-	if (distance < 10) then
-		goalDistance, goalDirection = GetDistanceAndAngle(goal, ball)
-		API.Robot.Kick(goalDirection, 100)
+	if (role == "keeper") then
+		if (distance < 30.1) then
+			choice = math.random(1, 3)
+			mate = API.Locate.Teammate(choice)
+			mateDistance, mateDirection = GetDistanceAndAngle(mate, ball)
+			API.Robot.Kick(mateDirection, 100)
+		else
+			if direction < 0 then
+				direction = - (math.pi / 2)
+			else
+				direction = (math.pi / 2)
+			end
+			API.Robot.Move(direction, 120)
+		end
+	elseif (distance < 30.1) then
+		if math.random(0, 4) < 4 then
+			print(team, "\t", player, "shooting for goal")
+			target = API.Locate.OppGoal()
+		else
+			
+			choice = math.random(1, 3)
+			if choice == player then
+				choice = choice + 1
+			end
+			if choice > 3 then
+				choice = 1
+			end
+			print(team, "\t", player, "passing to teammate ", choice)
+			target = API.Locate.Teammate(choice)
+		end
+		targetDirection, targetDistance = GetDistanceAndAngle(target, ball)
+		API.Robot.Kick(targetDirection, 100)
 	else
-		API.Robot.Move(direction, 50)
+		API.Robot.Move(direction, 120)
 	end
 end
