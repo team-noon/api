@@ -88,7 +88,7 @@ int lua_api(lua_State* L) {
         case 13: { // locate/opponent-goal
             lua_pop(L, args);
 
-            int x = match->team[t ^ 1].goal ? BORDER_STRIP_WIDTH - (GOAL_DEPTH / 2) : BORDER_STRIP_WIDTH + FIELD_LENGTH + (GOAL_DEPTH / 2);
+            int x = match->team[t].goal ? BORDER_STRIP_WIDTH - (GOAL_DEPTH / 2) : BORDER_STRIP_WIDTH + FIELD_LENGTH + (GOAL_DEPTH / 2);
             int y = BORDER_STRIP_WIDTH + (FIELD_WIDTH / 2);
 
             lua_pushnumber(L, x);
@@ -115,10 +115,17 @@ int lua_api(lua_State* L) {
             float dir = lua_tonumber(L, 2);
             int force = lua_tointeger(L, 3);
 
+            lua_pop(L, args);
+
+            float current = getTime();
+
+            if (current - match->timeOfLastKick < 0.5) return 0;
+
             match->ball.speed.x = cos(dir)*force;
             match->ball.speed.y = sin(dir)*force;
 
-            lua_pop(L, args);
+            match->timeOfLastKick = current;
+            
             return 0;
         } break;
 
@@ -148,32 +155,52 @@ int lua_api(lua_State* L) {
     }
 }
 
-int game_isBallInPlay(matchdata_t* match) {
-    // check if its in the goal area of either team
+int game_whereBody(matchdata_t* match, body_t* body) {
+    // in goal -> 1 for left goal, 2 for right goal
     if (
-        BORDER_STRIP_WIDTH - GOAL_DEPTH < match->ball.center.x &&
-        BORDER_STRIP_WIDTH > match->ball.center.x &&
-        CENTER_Y - GOAL_WIDTH / 2.0f < match->ball.center.y &&
-        CENTER_Y + GOAL_WIDTH / 2.0f > match->ball.center.y 
-        ||
-        BORDER_STRIP_WIDTH + FIELD_LENGTH < match->ball.center.x &&
-        BORDER_STRIP_WIDTH + FIELD_LENGTH + GOAL_DEPTH > match->ball.center.x &&
-        CENTER_Y - GOAL_WIDTH / 2.0f < match->ball.center.y &&
-        CENTER_Y + GOAL_WIDTH / 2.0f > match->ball.center.y
+        BORDER_STRIP_WIDTH - GOAL_DEPTH < body->center.x &&
+        BORDER_STRIP_WIDTH > body->center.x &&
+        CENTER_Y - GOAL_WIDTH / 2.0f < body->center.y &&
+        CENTER_Y + GOAL_WIDTH / 2.0f > body->center.y 
+    ) {
+        return 1;
+    }
+    if (
+        BORDER_STRIP_WIDTH + FIELD_LENGTH < body->center.x &&
+        BORDER_STRIP_WIDTH + FIELD_LENGTH + GOAL_DEPTH > body->center.x &&
+        CENTER_Y - GOAL_WIDTH / 2.0f < body->center.y &&
+        CENTER_Y + GOAL_WIDTH / 2.0f > body->center.y
     ) {
         return 2;
     }
-    // check if its out
+    // in goal area -> 3 for left goal area, 4 for right goal area
     if (
-        match->ball.center.x < BORDER_STRIP_WIDTH ||
-        match->ball.center.x > BORDER_STRIP_WIDTH + FIELD_LENGTH ||
-        match->ball.center.y < BORDER_STRIP_WIDTH ||
-        match->ball.center.y > BORDER_STRIP_WIDTH + FIELD_WIDTH
+        BORDER_STRIP_WIDTH < body->center.x &&
+        BORDER_STRIP_WIDTH + GOAL_AREA_LENGTH > body->center.x &&
+        CENTER_Y - GOAL_AREA_WIDTH / 2.0f < body->center.y &&
+        CENTER_Y + GOAL_AREA_WIDTH / 2.0f > body->center.y 
+    ) {
+        return 3;
+    }
+    if (
+        BORDER_STRIP_WIDTH + FIELD_LENGTH - GOAL_AREA_LENGTH < body->center.x &&
+        BORDER_STRIP_WIDTH + FIELD_LENGTH > body->center.x &&
+        CENTER_Y - GOAL_AREA_WIDTH / 2.0f < body->center.y &&
+        CENTER_Y + GOAL_AREA_WIDTH / 2.0f > body->center.y 
+    ) {
+        return 4;
+    }
+    // is outside
+    if (
+        body->center.x < BORDER_STRIP_WIDTH ||
+        body->center.x > BORDER_STRIP_WIDTH + FIELD_LENGTH ||
+        body->center.y < BORDER_STRIP_WIDTH ||
+        body->center.y > BORDER_STRIP_WIDTH + FIELD_WIDTH
     ) {
         return 0;
     }
     // all is in order
-    return 1;
+    return 5;
 }
 
 int game_setpos(matchdata_t* match) {
@@ -192,25 +219,19 @@ int game_setpos(matchdata_t* match) {
             match->team[match->kickoff].robot[PLAYERS - 1].cs.center.y = CENTER_Y;
             match->team[!match->kickoff].robot[PLAYERS - 1].cs.center.x = BORDER_STRIP_WIDTH + (match->team[!match->kickoff].goal ? + FIELD_LENGTH * 12/18 : FIELD_LENGTH * 6/18);
             match->team[!match->kickoff].robot[PLAYERS - 1].cs.center.y = BORDER_STRIP_WIDTH + (PLAYERS - 1) * (FIELD_WIDTH / (PLAYERS));
-            for (int t = 0; t < TEAMS; ++t) {
-                for (int r = 0; r < PLAYERS; ++r) {
-                    match->team[t].robot[r].orientation = match->team[t].goal ? 0.5 : 0;
-                }
-            }
+            match->ball.center.x = CENTER_X;
+            match->ball.center.y = CENTER_Y;
             break;
     }
 }
 
 int game_init(matchdata_t* match) {
-    match->ball.center.x = CENTER_X;
-    match->ball.center.y = CENTER_Y;
     match->lastTouchedBall = NULL;
     match->whichHalf = 0;
     match->kickoff = rand() % 2;
-    match->startofHalf = getTime();
+    match->startofHalf = match->timeOfLastKick = getTime();
     match->team[!match->kickoff].goal = rand() % 2;
     match->team[match->kickoff].goal = !match->team[!match->kickoff].goal;
-    match->state = SET;
     game_setpos(match);
 
     // Boot up robots
@@ -221,12 +242,6 @@ int game_init(matchdata_t* match) {
             rd->id = t*PLAYERS + r;
             rd->L = luaL_newstate();
             luaL_openlibs(rd->L);
-            lua_pushinteger(rd->L, t);
-            lua_setglobal(rd->L, "team");
-            lua_pushinteger(rd->L, r);
-            lua_setglobal(rd->L, "player");
-            lua_pushlightuserdata(rd->L, match);
-            lua_setglobal(rd->L, "match");
             luaL_dofile(rd->L, "tacapi.lua");
             lua_register(rd->L, "c_api", lua_api);
             if (luaL_dofile(rd->L, "tactics.lua") != LUA_OK) {  // Run the Lua file
@@ -237,6 +252,18 @@ int game_init(matchdata_t* match) {
                 rd->L = NULL;
                 // TODO remove from map
             }
+            lua_pushinteger(rd->L, t);
+            lua_setglobal(rd->L, "team");
+            lua_pushinteger(rd->L, r);
+            lua_setglobal(rd->L, "player");
+            lua_pushlightuserdata(rd->L, match);
+            lua_setglobal(rd->L, "match");
+            lua_getglobal(rd->L, "OnInit");
+            if (lua_pcall(rd->L, 0, 0, 0) != LUA_OK) { // L, args, returns
+                const char *error = lua_tostring(rd->L, -1);
+                printf("Error: %s\n", error);
+                lua_pop(rd->L, 1); // Remove error message from the stack
+            }
         }
     }
 }
@@ -246,14 +273,17 @@ int game_update(matchdata_t* match, float* time) {
     float current = getTime();
     float deltaTime = current - *time;
     *time = current;
-    if (current - match->startofHalf > 600) {
+    if (match->state == SWITCH_SIDES) {
         match->team[match->kickoff].goal = !match->team[match->kickoff].goal;
         match->team[!match->kickoff].goal = !match->team[!match->kickoff].goal;
         match->kickoff = !match->kickoff;
         match->whichHalf++;
         match->startofHalf = current;
         match->state = SET;
+    }
+    if (match->state == SET) {
         game_setpos(match);
+        match->state = IN_PLAY;
     }
     // Update Robot Scripts
     for (int t = 0; t < TEAMS; t++) {
@@ -273,22 +303,21 @@ int game_update(matchdata_t* match, float* time) {
         body_t *ba = a != TEAMS*PLAYERS ? &match->team[a < 4].robot[a % 4].cs : &match->ball;
         vec2_t maxStep = {ba->speed.x * deltaTime, ba->speed.y * deltaTime};
         for (int b = 0; b < TEAMS*PLAYERS; b++) {
-            if (a == b) continue;
+            if (a == b || a == TEAMS*PLAYERS) continue;
             body_t *bb = &match->team[b < 4].robot[b % 4].cs;
             vec2_t apos = {ba->center.x + maxStep.x, ba->center.y + maxStep.y};
             vec2_t bpos = {bb->center.x, bb->center.y};
             float dist = sqrt(pow(apos.x - bpos.x, 2) + pow(apos.y - bpos.y, 2));
             vec2_t maxnorm = vec_norm(maxStep);
             if (dist <= MARKER_RADIUS * 2 + 0.01) {
-                if (a == TEAMS*PLAYERS) {
-                    match->lastTouchedBall = &match->team[b < 4].robot[b % 4];
-                }
                 maxStep = (vec2_t){maxnorm.x * (dist - 2 * MARKER_RADIUS), maxnorm.y * (dist - 2 * MARKER_RADIUS)};
             }
         }
         // apply speed
         ba->center.x += maxStep.x, ba->center.y += maxStep.y;
     }
+    if (game_whereBody(match, &match->ball) < 3) match->state = SET;
+    if (current - match->startofHalf > 600) match->state = SWITCH_SIDES;
     fflush(stdout);
 }
 

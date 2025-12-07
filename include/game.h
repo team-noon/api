@@ -12,7 +12,7 @@ float getTime();
 
 int lua_api(lua_State* L);
 
-int game_isBallInPlay(matchdata_t* match);
+int game_whereBody(matchdata_t* match, body_t* body);
 
 int game_init(matchdata_t* match);
 

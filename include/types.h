@@ -17,7 +17,8 @@ enum MatchState {
     STOP,
     PENALTY,
     FREE_KICK,
-    PENALTY_KICK
+    PENALTY_KICK,
+    SWITCH_SIDES
 };
 
 typedef struct Vec2 {
@@ -48,6 +49,7 @@ typedef struct MatchData {
     uint8_t kickoff;
     uint8_t whichHalf;
     float startofHalf;
+    float timeOfLastKick;
     robotdata_t* lastTouchedBall;
     enum MatchState state;
 } matchdata_t;
