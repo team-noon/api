@@ -19,8 +19,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <float.h>
 
 #include <math.h>
+
+#define PI 3.14159265358979323846
 
 float getTime() {
     struct timespec res = {};
@@ -87,9 +90,8 @@ int lua_api(lua_State* L) {
 
         case 13: { // locate/opponent-goal
             lua_pop(L, args);
-
-            int x = match->team[t].goal ? BORDER_STRIP_WIDTH - (GOAL_DEPTH / 2) : BORDER_STRIP_WIDTH + FIELD_LENGTH + (GOAL_DEPTH / 2);
-            int y = BORDER_STRIP_WIDTH + (FIELD_WIDTH / 2);
+            int x = CENTER_X + (match->team[t ^ 1].goal ? (FIELD_LENGTH / 2) : (-FIELD_LENGTH/2));
+            int y = CENTER_Y;
 
             lua_pushnumber(L, x);
             lua_pushnumber(L, y);
@@ -105,6 +107,7 @@ int lua_api(lua_State* L) {
 
             match->team[t].robot[r].cs.speed.x = cos(dir)*speed;
             match->team[t].robot[r].cs.speed.y = sin(dir)*speed;
+            
             lua_pop(L, args);
             return 0;
         } break;
@@ -121,8 +124,13 @@ int lua_api(lua_State* L) {
 
             if (current - match->timeOfLastKick < 0.5) return 0;
 
-            match->ball.speed.x = cos(dir)*force;
-            match->ball.speed.y = sin(dir)*force;
+            match->team[t].robot[r].timeOfLastCollision = current;
+
+            float offset_x = rand() % 2 ? (PI / 9) : (-PI / 9);
+            float offset_y = rand() % 2 ? (PI / 9) : (-PI / 9);
+
+            match->ball.speed.x = cos(dir + offset_x)*force;
+            match->ball.speed.y = sin(dir + offset_y)*force;
 
             match->timeOfLastKick = current;
             
@@ -221,6 +229,11 @@ int game_setpos(matchdata_t* match) {
             match->team[!match->kickoff].robot[PLAYERS - 1].cs.center.y = BORDER_STRIP_WIDTH + (PLAYERS - 1) * (FIELD_WIDTH / (PLAYERS));
             match->ball.center.x = CENTER_X;
             match->ball.center.y = CENTER_Y;
+            for (int a = 0; a < TEAMS*PLAYERS+1; a++) {
+                body_t *ba = a != TEAMS*PLAYERS ? &match->team[a < 4].robot[a % 4].cs : &match->ball;
+                ba->speed.x = 0;
+                ba->speed.y = 0;
+            }
             break;
     }
 }
@@ -240,6 +253,7 @@ int game_init(matchdata_t* match) {
             robotdata_t* rd = &match->team[t].robot[r];
             rd->team = t;
             rd->id = t*PLAYERS + r;
+            rd->timeOfLastCollision = getTime();
             rd->L = luaL_newstate();
             luaL_openlibs(rd->L);
             luaL_dofile(rd->L, "tacapi.lua");
@@ -266,6 +280,7 @@ int game_init(matchdata_t* match) {
             }
         }
     }
+    match->state = IN_PLAY;
 }
 
 int game_update(matchdata_t* match, float* time) {
@@ -310,11 +325,20 @@ int game_update(matchdata_t* match, float* time) {
             float dist = sqrt(pow(apos.x - bpos.x, 2) + pow(apos.y - bpos.y, 2));
             vec2_t maxnorm = vec_norm(maxStep);
             if (dist <= MARKER_RADIUS * 2 + 0.01) {
+                if (current - match->team[a<4].robot[a % 4].timeOfLastCollision > 3) {
+                    match->team[a<4].robot[a % 4].timeOfLastCollision = current;
+                }
                 maxStep = (vec2_t){maxnorm.x * (dist - 2 * MARKER_RADIUS), maxnorm.y * (dist - 2 * MARKER_RADIUS)};
             }
         }
         // apply speed
+        if (a != TEAMS*PLAYERS && current - match->team[a<4].robot[a % 4].timeOfLastCollision < 2) continue;
         ba->center.x += maxStep.x, ba->center.y += maxStep.y;
+        if (a == TEAMS*PLAYERS) {
+            float underone = nextafter(0.999, 0);
+            ba->speed.x *= underone;
+            ba->speed.y *= underone;
+        }
     }
     if (game_whereBody(match, &match->ball) < 3) match->state = SET;
     if (current - match->startofHalf > 600) match->state = SWITCH_SIDES;

@@ -34,6 +34,7 @@ typedef struct RobotData {
     int id;
     body_t cs;
     float orientation;
+    float timeOfLastCollision;
     lua_State *L;
 } robotdata_t;
 
