@@ -8,38 +8,41 @@
 
 struct MatchData match;
 
-int main(void) {
-  // Setup Field
+int main(void)
+{
+    // Setup Field
 
-  srand(time(0));
+    srand(time(0));
 
-  game_init(&match);
+    game_init(&match);
 
-  struct Render render;
-  if (Render_Create(&render, 2 * BORDER_STRIP_WIDTH + FIELD_LENGTH,
-                    2 * BORDER_STRIP_WIDTH + FIELD_WIDTH, 0.8))
-    return 1;
+    struct Render render;
+    if (Render_Create(&render, 2 * BORDER_STRIP_WIDTH + FIELD_LENGTH,
+                      2 * BORDER_STRIP_WIDTH + FIELD_WIDTH, 0.8))
+        return 1;
 
-  float time = getTime();
-  while (Render_Update(render) && match.whichHalf < 2) {
-    game_update(&match, &time);
-    // TOOD
+    float time = getTime();
+    while (Render_Update(render) && match.whichHalf < 2)
+    {
+        game_update(&match, &time);
+        // TOOD
 
-    // Render Stuff
-    drawField(render);
+        // Render Stuff
+        drawField(render);
 
-    for (int t = 0; t < 2; t++)
-      for (int r = 0; r < 4; r++)
-        drawMarker(render, match.team[t].robot[r].cs, 0, 0, t ? 1 : 0,
-                   t ? 0 : 1);
+        for (int t = 0; t < 2; t++) {
+            for (int r = 0; r < 4; r++) {
+                uint8_t isDown = (time - match.team[t].robot[r].timeOfLastCollision) < 2;
+                drawMarker(render, match.team[t].robot[r].cs, 0, isDown, t ? 1 : 0, t ? 0 : 1);
+            }                
+        }
+        drawMarker(render, match.ball, 0, 1, 0, 0);
+    }
 
-    drawMarker(render, match.ball, 0, 1, 0, 0);
-  }
+    Render_Destroy(&render);
 
-  Render_Destroy(&render);
+    game_destroy(&match);
 
-  game_destroy(&match);
-
-  // TODO
-  return 0;
+    // TODO
+    return 0;
 }
