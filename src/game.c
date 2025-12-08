@@ -122,7 +122,7 @@ int lua_api(lua_State* L) {
 
             float current = getTime();
 
-            if (current - match->timeOfLastKick < 0.5) return 0;
+            if (current - match->timeOfLastKick < 0.5 || current - match->team[t].robot[t].timeOfLastCollision < 2) return 0;
 
             match->team[t].robot[r].timeOfLastCollision = current;
 
@@ -229,11 +229,18 @@ int game_setpos(matchdata_t* match) {
             match->team[!match->kickoff].robot[PLAYERS - 1].cs.center.y = BORDER_STRIP_WIDTH + (PLAYERS - 1) * (FIELD_WIDTH / (PLAYERS));
             match->ball.center.x = CENTER_X;
             match->ball.center.y = CENTER_Y;
+            float current = getTime();
             for (int a = 0; a < TEAMS*PLAYERS+1; a++) {
                 body_t *ba = a != TEAMS*PLAYERS ? &match->team[a < 4].robot[a % 4].cs : &match->ball;
                 ba->speed.x = 0;
                 ba->speed.y = 0;
+                if (a != TEAMS*PLAYERS) {
+                    robotdata_t *ra = &match->team[a < 4].robot[a % 4];
+                    ra->timeOfLastCollision = current;
+                }
             }
+            
+            match->timeOfLastKick = current;
             break;
     }
 }
