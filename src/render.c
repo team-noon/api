@@ -225,7 +225,7 @@ void drawMarker(struct Render render, body_t body, int fallen, float r, float g,
                  (vec2_t){body.center.x + MARKER_RADIUS, body.center.y},
                  (vec2_t){body.center.x, body.center.y - MARKER_RADIUS},
                  (vec2_t){body.center.x - MARKER_RADIUS, body.center.y});
-  Render_Color(render, 1, 0, 1);
+  Render_Color(render, 0.5, 0, 0.5);
   Render_Line(
       render, body.center,
       (vec2_t){body.center.x + body.speed.x, body.center.y + body.speed.y});
