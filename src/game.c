@@ -1,3 +1,16 @@
+/*
+ * game.c — játék főhurka: Lua taktikai API (c_api), meccs inicializálás, pozícióbeállítás,
+ * majd minden képkockán: szkriptek (OnUpdate) + egyszerű fizikai integráció.
+ *
+ * Ütközés / „szűrés” (fontos a bemutatóhoz):
+ * - A belső ciklusban jelenleg csak ROBOT–ROBOT párok szerepelnek (b mindig játékos index).
+ * - Ha a külső index a labda (a == TEAMS*PLAYERS), a belső ciklusban minden ágra „continue”
+ *   lépünk, tehát a labda NEM kap ilyen robot–robot stílusú lépéskorrekciót ebben a blokkban.
+ * - A labda sebessége a rúgásnál (case 21) és a mozgatásnál külön kezelődik; a végén csillapítás.
+ * - Robot–labda kemény fizikai ütközésfeloldás itt nincs külön rétegként — a taktika Lua oldalon
+ *   (pl. távolság-alapú rúgás) egészíti ki.
+ */
+
 #ifdef __linux__
     #define _POSIX_C_SOURCE 199309L
 #endif
@@ -25,15 +38,20 @@
 
 #define PI 3.14159265358979323846
 
+/* Monoton óra: másodpercben (deltaTime számításhoz, rúgás cooldown-hoz). */
 float getTime() {
     struct timespec res = {};
     clock_gettime(CLOCK_MONOTONIC, &res);
     return (float)res.tv_sec + (float)res.tv_nsec / 1e9;
 }
 
+/*
+ * lua_api — a Lua tacapi.lua által hívott C központi kapu.
+ * Az első egész szám a parancs kódja (0: állapot, 10–16: pozíció/sebesség, 20: mozgás, 21: rúgás, stb.).
+ * A hívó robot csapatát (team) és indexét (player) globálisból olvassa, a match pointert userdatából.
+ */
 int lua_api(lua_State* L) {
-    // find calling robot
-    // (in case coroutines are used; could be a context switch otherwise)
+    /* Megkeressük a hívó robotot (korutin esetén is érdemes így). */
     
     int args = lua_gettop(L);
     if (!args) return 0; // invalid call
@@ -97,6 +115,50 @@ int lua_api(lua_State* L) {
             lua_pushnumber(L, y);
 
             return 2;
+        } break;
+
+        case 14: { // locate/teammate-velocity
+            if (args < 2) return 0;
+
+            int id = lua_tointeger(L, 2);
+
+            lua_pop(L, args);
+
+            lua_pushnumber(L, match->team[t].robot[id].cs.speed.x);
+            lua_pushnumber(L, match->team[t].robot[id].cs.speed.y);
+
+            return 2;
+        } break;
+
+        case 15: { // locate/opponent-velocity
+            if (args < 2) return 0;
+
+            int id = lua_tointeger(L, 2);
+
+            lua_pop(L, args);
+
+            lua_pushnumber(L, match->team[t ^ 1].robot[id].cs.speed.x);
+            lua_pushnumber(L, match->team[t ^ 1].robot[id].cs.speed.y);
+
+            return 2;
+        } break;
+
+        case 16: { // locate/ball-velocity
+            lua_pop(L, args);
+
+            lua_pushnumber(L, match->ball.speed.x);
+            lua_pushnumber(L, match->ball.speed.y);
+
+            return 2;
+        } break;
+
+        case 22: { // robot/collisionAge
+            // Proxy for "timeOfLastCollision": seconds since last collision.
+            float current = getTime();
+            float age = current - match->team[t].robot[r].timeOfLastCollision;
+            lua_pop(L, args);
+            lua_pushnumber(L, age);
+            return 1;
         } break;
 
         case 20: { // robot/move
@@ -163,8 +225,12 @@ int lua_api(lua_State* L) {
     }
 }
 
+/*
+ * game_whereBody — egy test (tipikusan labda) hol van a pályán:
+ * kapuban, tizenhatoson, pályán belül vagy kint. Visszatérési kódok: 0–5 (lásd feltételek).
+ */
 int game_whereBody(matchdata_t* match, body_t* body) {
-    // in goal -> 1 for left goal, 2 for right goal
+    /* Kapuban: bal = 1, jobb = 2 */
     if (
         BORDER_STRIP_WIDTH - GOAL_DEPTH < body->center.x &&
         BORDER_STRIP_WIDTH > body->center.x &&
@@ -181,7 +247,7 @@ int game_whereBody(matchdata_t* match, body_t* body) {
     ) {
         return 2;
     }
-    // in goal area -> 3 for left goal area, 4 for right goal area
+    /* Tizenhatos / kapu előtti terület: bal = 3, jobb = 4 */
     if (
         BORDER_STRIP_WIDTH < body->center.x &&
         BORDER_STRIP_WIDTH + GOAL_AREA_LENGTH > body->center.x &&
@@ -198,7 +264,7 @@ int game_whereBody(matchdata_t* match, body_t* body) {
     ) {
         return 4;
     }
-    // is outside
+    /* Pályán kívül */
     if (
         body->center.x < BORDER_STRIP_WIDTH ||
         body->center.x > BORDER_STRIP_WIDTH + FIELD_LENGTH ||
@@ -207,10 +273,11 @@ int game_whereBody(matchdata_t* match, body_t* body) {
     ) {
         return 0;
     }
-    // all is in order
+    /* Rendben a játékterületen */
     return 5;
 }
 
+/* Bedobás / SET állapot: játékosok és labda kezdőpozíciója, sebességek nullázása. */
 int game_setpos(matchdata_t* match) {
     switch (match->state) {
         case SET:
@@ -242,9 +309,20 @@ int game_setpos(matchdata_t* match) {
             
             match->timeOfLastKick = current;
             break;
+        case READY:
+        case IN_PLAY:
+        case DROPPED:
+        case STOP:
+        case PENALTY:
+        case FREE_KICK:
+        case PENALTY_KICK:
+        case SWITCH_SIDES:
+            break;
     }
+    return 0;
 }
 
+/* Meccs és Lua VM-ek indítása: minden robothoz külön tactics.lua + tacapi.lua. */
 int game_init(matchdata_t* match) {
     match->lastTouchedBall = NULL;
     match->whichHalf = 0;
@@ -254,7 +332,7 @@ int game_init(matchdata_t* match) {
     match->team[match->kickoff].goal = !match->team[!match->kickoff].goal;
     game_setpos(match);
 
-    // Boot up robots
+    /* Robotok „felélesztése”: Lua állapot, globális team/player/match */
     for (int t = 0; t < TEAMS; t++) {
         for (int r = 0; r < PLAYERS; r++) {
             robotdata_t* rd = &match->team[t].robot[r];
@@ -288,10 +366,16 @@ int game_init(matchdata_t* match) {
         }
     }
     match->state = IN_PLAY;
+    return 0;
 }
 
+/*
+ * game_update — egy szimulációs lépés:
+ * 1) deltaTime, 2) meccsállapot (oldalcsere, SET), 3) minden robot OnUpdate(dt),
+ * 4) fizika: pozíció frissítés és egyszerű átfedés-kezelés robotok között.
+ */
 int game_update(matchdata_t* match, float* time) {
-    // Deltatime
+    /* Időlépés: előző képkocka óta eltelt másodperc */
     float current = getTime();
     float deltaTime = current - *time;
     *time = current;
@@ -307,12 +391,13 @@ int game_update(matchdata_t* match, float* time) {
         game_setpos(match);
         match->state = IN_PLAY;
     }
-    // Update Robot Scripts
+    /* Taktikai szkriptek — minden robot saját Lua kontextusban */
     for (int t = 0; t < TEAMS; t++) {
         for (int r = 0; r < PLAYERS; r++) {
             robotdata_t* rd = &match->team[t].robot[r];
             lua_getglobal(rd->L, "OnUpdate");
-            if (lua_pcall(rd->L, 0, 0, 0) != LUA_OK) { // L, args, returns
+            lua_pushnumber(rd->L, deltaTime);
+            if (lua_pcall(rd->L, 1, 0, 0) != LUA_OK) { // L, args, returns
                 const char *error = lua_tostring(rd->L, -1);
                 printf("Error: %s\n", error);
                 lua_pop(rd->L, 1); // Remove error message from the stack
@@ -320,8 +405,16 @@ int game_update(matchdata_t* match, float* time) {
             // TODO maybe pop return value
         }
     }
-    // Update Physics
-    for (int a = 0; a < TEAMS*PLAYERS+1; a++) { // 2*4 robots + ball
+    /*
+     * Fizika — pozíció integrálás:
+     * - Külső ciklus: minden „test” (8 robot + 1 labda).
+     * - Belső ciklus: csak más robotokkal (b < TEAMS*PLAYERS), labda indexnél (a == TEAMS*PLAYERS)
+     *   a feltétel miatt nem történik ütközés-számolás — a labda lépése itt nem robot–robot
+     *   korrekciót kap.
+     * - Ha két robot előre vetített pozíciója túl közel (2×MARKER_RADIUS), a lépéshossz csökkentése
+     *   (maxStep módosítása) — ez nem „szellem” ütközés, hanem egyszerű átfedés elkerülése.
+     */
+    for (int a = 0; a < TEAMS*PLAYERS+1; a++) { /* 8 robot + labda */
         body_t *ba = a != TEAMS*PLAYERS ? &match->team[a < 4].robot[a % 4].cs : &match->ball;
         vec2_t maxStep = {ba->speed.x * deltaTime, ba->speed.y * deltaTime};
         for (int b = 0; b < TEAMS*PLAYERS; b++) {
@@ -338,9 +431,10 @@ int game_update(matchdata_t* match, float* time) {
                 maxStep = (vec2_t){maxnorm.x * (dist - 2 * MARKER_RADIUS), maxnorm.y * (dist - 2 * MARKER_RADIUS)};
             }
         }
-        // apply speed
+        /* Pozíció alkalmazása; rövid ideig ütközés után a robot nem mozdul (timeOfLastCollision). */
         if (a != TEAMS*PLAYERS && current - match->team[a<4].robot[a % 4].timeOfLastCollision < 2) continue;
         ba->center.x += maxStep.x, ba->center.y += maxStep.y;
+        /* Labda csillapítás (súrlódás-szerű hatás) */
         if (a == TEAMS*PLAYERS) {
             float underone = nextafter(0.999, 0);
             ba->speed.x *= underone;
@@ -350,8 +444,10 @@ int game_update(matchdata_t* match, float* time) {
     if (game_whereBody(match, &match->ball) < 3) match->state = SET;
     if (current - match->startofHalf > 600) match->state = SWITCH_SIDES;
     fflush(stdout);
+    return 0;
 }
 
+/* Leállítás: Lua állapotok felszabadítása. */
 int game_destroy(matchdata_t* match) {
     for (int t = 0; t < TEAMS; t++) {
         for (int r = 0; r < PLAYERS; r++) {
@@ -359,4 +455,5 @@ int game_destroy(matchdata_t* match) {
             lua_close(rd->L);
         }
     }
+    return 0;
 }
